@@ -1,6 +1,4 @@
 #temp scripts
-nbs_ziGamma.R
-cpm_longitudinal_KF.R
 correlate_CPM_covars_with_change_scores.R
 # History files
 .Rhistory

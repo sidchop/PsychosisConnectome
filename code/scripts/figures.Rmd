@@ -1,0 +1,1507 @@
+---
+title: "figures for NBS stages paper"
+author: "Sidhant Chopra"
+date: "2022-08-15"
+output: html_document
+---
+```{r print files for BrainNetViewer}
+#print node and edge files for BrainNetViewer
+atlas <- as.data.frame(xlsx::read.xlsx("~/Dropbox/Sid/R_files/STAGES_difussion/data/schaefer+aseg_labels.xlsx", sheetName = "atlas"))
+removed_roi <- c(50,51,52, 53, 86, 90, 197,199, 200, 201, 242, 243, 244)
+atlas <- atlas[-c(removed_roi),]
+roi_name <- atlas[,1]
+roi_name <- stringr::str_remove_all(roi_name,"7Networks_")
+centroid <- atlas[,2:4]
+network <-  atlas[,5]
+```
+
+## Group diff
+```{r make list of comps}
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/functions/get_nbs_connectome.R")
+comp_05_fep_lt_hc <- comp_05_fep_gt_hc  <-get_nbs_connectome(type = "commit",  p = 0.05, weighted = T)
+comp_05_fep_lt_hc[comp_05_fep_lt_hc<0] <- 0
+comp_05_fep_lt_hc[comp_05_fep_lt_hc!=0] <- 1
+comp_05_fep_gt_hc[comp_05_fep_gt_hc>0] <- 0
+comp_05_fep_gt_hc[comp_05_fep_gt_hc!=0] <- 1
+
+comp_01_fep_lt_hc <- comp_01_fep_gt_hc  <-get_nbs_connectome(type = "commit",  p = 0.01, weighted = T)
+comp_01_fep_lt_hc[comp_01_fep_lt_hc<0] <- 0
+comp_01_fep_lt_hc[comp_01_fep_lt_hc!=0] <- 1
+comp_01_fep_gt_hc[comp_01_fep_gt_hc>0] <- 0
+comp_01_fep_gt_hc[comp_01_fep_gt_hc!=0] <- 1
+
+comp_001_fep_lt_hc <- comp_001_fep_gt_hc  <-get_nbs_connectome(type = "commit",  p = 0.001, weighted = T)
+comp_001_fep_lt_hc[comp_001_fep_lt_hc<0] <- 0
+comp_001_fep_lt_hc[comp_001_fep_lt_hc!=0] <- 1
+comp_001_fep_gt_hc[comp_001_fep_gt_hc>0] <- 0
+comp_001_fep_gt_hc[comp_001_fep_gt_hc!=0] <- 1
+
+comp_list <- list(comp_05_fep_lt_hc, comp_05_fep_gt_hc,comp_01_fep_lt_hc, comp_01_fep_gt_hc,comp_001_fep_lt_hc, comp_001_fep_gt_hc)
+names(comp_list) <- c("comp_05_fep_lt_hc", "comp_05_fep_gt_hc","comp_01_fep_lt_hc", "comp_01_fep_gt_hc","comp_001_fep_lt_hc", "comp_001_fep_gt_hc")
+
+
+```
+
+```{r generate brain net viewer files, eval=FALSE}
+for (c in 1:length(comp_list)){
+  #create .edge file first
+  write.table(comp_list[[c]],
+              paste0("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/NBS_paper/figures/BrainNetViewer/",names(comp_list)[c],".edge"),
+              col.names = F,
+              row.names = F, 
+              quote = F)
+  node_file <- cbind(centroid, network, rowSums(comp_list[[c]]), roi_name)
+  write.table(node_file,
+              paste0("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/NBS_paper/figures/BrainNetViewer/",names(comp_list)[c],".node"),
+              col.names = F,
+              row.names = F, 
+              quote = F)
+}
+```
+
+```{r chord diagrams based on network effect size}
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/functions/get_nbs_connectome.R")
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/NBS_paper/figures/make_chord.R")
+source("~/Dropbox/Sid/R_files/functions/smooth_matrix.R")
+atlas <- as.data.frame(xlsx::read.xlsx("~/Dropbox/Sid/R_files/STAGES_difussion/data/schaefer+aseg_labels.xlsx", sheetName = "atlas"))
+removed_roi <- c(50,51,52, 53, 86, 90, 197,199, 200, 201, 242, 243, 244)
+atlas <- atlas[-c(removed_roi),]
+atlas$order_by_network <- 1:nrow(atlas)
+atlas <- atlas[order(atlas$netid),]
+
+#need to reorder connectmoes 
+data <- get_nbs_connectome(type = "commit",  p = 0.05, weighted = T)
+data <- data[atlas$order_by_network, atlas$order_by_network]
+
+#need to mask smooth by included edges
+included_edges <- readRDS("~/Dropbox/Sid/R_files/STAGES_difussion/data/ziGamma_nbs/included_edges_zi20_ks_d_o.RDS") 
+
+included_edges <- vec_2_mat(included_edges , 319, 0, lower.tri = T)
+included_edges[included_edges==0] <- NA
+data_masked_pos <- data_masked_neg <- data_masked <- data*included_edges
+data_smooth <- smooth_matrix(data_masked , atlas$netid, atlas$netid, return.full.matrix = F)
+make_chord(data = data_smooth, link_colorscale = "bwr")
+
+#split by pos and neg  
+data_masked_pos[data_masked_pos<0] <- 0
+data_smooth_pos <- smooth_matrix(data_masked_pos, atlas$netid, atlas$netid, return.full.matrix = F)
+make_chord(data = data_smooth_pos, link_colorscale = "bwr",
+           min_thre = min(data_smooth,na.rm = T), 
+           max_thre = max(data_smooth, na.rm = T))
+
+data_masked_neg[data_masked_neg>0] <- 0
+data_smooth_neg <- smooth_matrix(data_masked_neg, atlas$netid, atlas$netid, return.full.matrix = F)
+make_chord(data = data_smooth_neg, link_colorscale = "bwr", 
+           min_thre = min(data_smooth,na.rm = T), 
+           max_thre = max(data_smooth, na.rm = T))
+
+#top 10% of total connection
+thr_mat <- function(mat=NULL, pct=10){
+  thr <- 1-(pct*0.01)
+  ut_mat <- abs(mat[upper.tri(mat)])
+  qthr <- quantile(ut_mat, thr)
+  mat[abs(mat)<qthr] <- 0
+  return(mat)
+}
+data_smooth_10pct <- thr_mat(data_smooth, 10)
+data_smooth_pos_10pct <- thr_mat(data_smooth_pos, 10)
+data_smooth_neg_10pct <- thr_mat(data_smooth_neg, 10)
+make_chord(data = data_smooth_10pct, link_colorscale = "bwr",
+           min_thre = min(data_smooth,na.rm = T), 
+           max_thre = max(data_smooth, na.rm = T))
+make_chord(data = data_smooth_pos_10pct, link_colorscale = "bwr",
+           min_thre = min(data_smooth,na.rm = T), 
+           max_thre = max(data_smooth, na.rm = T))
+make_chord(data = data_smooth_neg_10pct, link_colorscale = "bwr",
+           min_thre = min(data_smooth,na.rm = T), 
+           max_thre = max(data_smooth, na.rm = T))
+```
+
+```{r network matricies diagrams, fig.width=21, fig.height=16}
+source("~/Dropbox/Sid/R_files/functions/plotClassifiedEdges.R")
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/functions/get_node_distance.R")
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/functions/get_nbs_connectome.R")
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/NBS_paper/figures/makeNetworkMatrix2.R")
+library(ggplot2)
+
+#make positive and negative binary matricies 
+fep_lt_hc <- fep_gt_hc <- get_nbs_connectome(type = "commit",  p = 0.05, weighted = T)
+fep_lt_hc[fep_lt_hc < 0] <- 0
+fep_lt_hc[fep_lt_hc != 0] <- 1
+fep_gt_hc[fep_gt_hc > 0] <- 0
+fep_gt_hc[fep_gt_hc != 0] <- 1
+
+labels <- c("Visual", "Somatomotor", "Dorsal Attention", "Ventral Attention" , "Limbic",
+            "Frontoparietal", "Default", "MTL", "Thalamus", "Striatum")
+short_labs <- c("Vis", "SomMot", "DorsAttn",  "VentAttn", "Lim", "FPN", "DMN", 
+                "MTL", "Thal", "Stri")
+
+networks <- get_network_ids()
+pce_fep_lt_hc <- plotClassifiedEdges(adj =   fep_lt_hc, ids = network, labels = short_labs)
+pce_fep_gt_hc <- plotClassifiedEdges(adj =   fep_gt_hc, ids = network, labels = short_labs)
+
+
+included_edges <- readRDS("~/Dropbox/Sid/R_files/STAGES_difussion/data/ziGamma_nbs/included_edges_zi20_ks_d_o.RDS") #CHANGE according to included edges
+included_edges <- vec_2_mat(included_edges, 319, 0,lower.tri = T)
+included_edges[is.na(included_edges)] <- 0
+pce_hc <- plotClassifiedEdges(adj = included_edges, ids = network, labels = short_labs)
+makeNetworkMatrix2(matrix1 = pce_hc[[1]], 
+                   matrix2 = pce_hc[[1]]) #
+#whitered <- circlize::colorRamp2(c(0, 1), c("white","red"), space='RGB')
+#whitered <- whitered(seq(0, 1, length.out=100))
+
+mat <- makeNetworkMatrix2(matrix1 = pce_fep_gt_hc[[1]]/pce_hc[[1]], 
+                          matrix2 = pce_fep_gt_hc[[1]],
+                          min1 = min(c(pce_fep_gt_hc[[1]]/pce_hc[[1]], pce_fep_lt_hc[[1]]/pce_hc[[1]])),
+                          min2 = min(pce_fep_gt_hc[[1]], pce_fep_lt_hc[[1]]),
+                          max1 = max(c(pce_fep_gt_hc[[1]]/pce_hc[[1]], pce_fep_lt_hc[[1]]/pce_hc[[1]])),
+                          max2 = max(pce_fep_gt_hc[[1]], pce_fep_lt_hc[[1]])) #
+
+ggsave( "vector_files/NBS05_network_plot_fep_gt_hc.svg", mat,"svg", width = 13, height = 9, units = 'in')
+
+mat <- makeNetworkMatrix2(matrix1 = pce_fep_lt_hc[[1]]/pce_hc[[1]], 
+                          matrix2 = pce_fep_lt_hc[[1]],
+                          min1 = min(c(pce_fep_gt_hc[[1]]/pce_hc[[1]], pce_fep_lt_hc[[1]]/pce_hc[[1]])),
+                          min2 = min(pce_fep_gt_hc[[1]], pce_fep_lt_hc[[1]]),
+                          max1 = max(c(pce_fep_gt_hc[[1]]/pce_hc[[1]], pce_fep_lt_hc[[1]]/pce_hc[[1]])),
+                          max2 = max(pce_fep_gt_hc[[1]], pce_fep_lt_hc[[1]]))
+
+ggsave( "vector_files/NBS05_network_plot_fep_lt_hc.svg", mat,"svg", width = 13, height = 9, units = 'in')
+
+```
+
+```{r chord diagram with proportions, fig.width=6, fig.height=6}
+source("~/Dropbox/Sid/R_files/functions/plotClassifiedEdges.R")
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/NBS_paper/figures/makeNetworkMatrix2.R")
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/functions/get_node_distance.R")
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/functions/get_nbs_connectome.R")
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/NBS_paper/figures/make_chord.R")
+library(ggplot2)
+
+#make positive and negative binary matricies 
+fep_lt_hc <- fep_gt_hc <- get_nbs_connectome(type = "commit",  p = 0.05, weighted = T)
+fep_lt_hc[fep_lt_hc < 0] <- 0
+fep_lt_hc[fep_lt_hc != 0] <- 1
+fep_gt_hc[fep_gt_hc > 0] <- 0
+fep_gt_hc[fep_gt_hc != 0] <- 1
+
+labels <- c("Visual", "Somatomotor", "Dorsal Attention", "Ventral Attention" , "Limbic",
+            "Frontoparietal", "Default", "MTL", "Thalamus", "Striatum")
+short_labs <- c("Vis", "SomMot", "DorsAttn",  "VentAttn", "Lim", "FPN", "DMN", 
+                "MTL", "Thal", "Stri")
+
+networks <- get_network_ids()
+
+pce_fep_lt_hc <- plotClassifiedEdges(adj =   fep_lt_hc, ids = networks, labels = short_labs)
+pce_fep_gt_hc <- plotClassifiedEdges(adj =   fep_gt_hc, ids = networks, labels = short_labs)
+
+included_edges <- readRDS("~/Dropbox/Sid/R_files/STAGES_difussion/data/ziGamma_nbs/included_edges_zi20_ks_d_o.RDS") #CHANGE according to included edges
+included_edges <- vec_2_mat(included_edges, 319, 0,lower.tri = T)
+included_edges[is.na(included_edges)] <- 0
+pce_hc <- plotClassifiedEdges(adj = included_edges, ids = networks, labels = short_labs)
+
+
+svg("vector_files/NBS05_circos_plot_fep_lt_hc_raw.svg")
+circos <- make_chord(data = pce_fep_lt_hc[[1]], link_colorscale = "bwr",
+                     min_thre = min(c(pce_fep_gt_hc[[1]],pce_fep_lt_hc[[1]]),na.rm = T), 
+                     max_thre = max(c(pce_fep_gt_hc[[1]],pce_fep_lt_hc[[1]]), na.rm = T))
+print(circos)
+dev.off()
+
+svg("vector_files/NBS05_circos_plot_fep_lt_hc_prop.svg")
+circos <- make_chord(data = pce_fep_lt_hc[[1]]/pce_hc[[1]], link_colorscale = "bwr",
+                     min_thre = min(c(pce_fep_gt_hc[[1]]/pce_hc[[1]],pce_fep_lt_hc[[1]]/pce_hc[[1]]),na.rm = T), 
+                     max_thre = max(c(pce_fep_gt_hc[[1]]/pce_hc[[1]],pce_fep_lt_hc[[1]]/pce_hc[[1]]), na.rm = T))
+print(circos)
+dev.off()
+
+
+svg("vector_files/NBS05_circos_plot_fep_gt_hc_raw.svg")
+circos <- make_chord(data = pce_fep_gt_hc[[1]], link_colorscale = "bwr",
+                     min_thre = min(c(pce_fep_gt_hc[[1]],pce_fep_lt_hc[[1]]),na.rm = T), 
+                     max_thre = max(c(pce_fep_gt_hc[[1]],pce_fep_lt_hc[[1]]), na.rm = T))
+print(circos)
+dev.off()
+
+svg("vector_files/NBS05_circos_plot_fep_gt_hc_prop.svg")
+circos <- make_chord(data = pce_fep_gt_hc[[1]]/pce_hc[[1]], link_colorscale = "bwr",
+                     min_thre = min(c(pce_fep_gt_hc[[1]]/pce_hc[[1]],pce_fep_lt_hc[[1]]/pce_hc[[1]]),na.rm = T), 
+                       max_thre = max(c(pce_fep_gt_hc[[1]]/pce_hc[[1]],pce_fep_lt_hc[[1]]/pce_hc[[1]]), na.rm = T))
+                     
+print(circos)
+dev.off()
+
+
+#plot top x pct
+thr_mat <- function(mat=NULL, pct=NULL){
+  thr <- 1-(pct*0.01)
+  ut_mat <- abs(mat[upper.tri(mat)])
+  qthr <- quantile(ut_mat, thr)
+  mat[abs(mat)<qthr] <- 0
+  return(mat)
+}
+
+pct=50
+pce_fep_gt_hc_thr <- thr_mat(pce_fep_gt_hc[[1]],pct)
+pce_fep_lt_hc_thr <- thr_mat(pce_fep_lt_hc[[1]],pct)
+pce_fep_gt_hc_thr_norm <- thr_mat(pce_fep_gt_hc[[1]]/pce_hc[[1]],pct)
+pce_fep_lt_hc_thr_norm <- thr_mat(pce_fep_lt_hc[[1]]/pce_hc[[1]],pct)
+
+svg("vector_files/NBS05_circos_plot_fep_lt_hc_raw_thr50.svg")
+circos <-  make_chord(data = pce_fep_lt_hc_thr, link_colorscale = "bwr",
+                      min_thre = min(c(pce_fep_gt_hc_thr,pce_fep_lt_hc_thr),na.rm = T), 
+                      max_thre = max(c(pce_fep_gt_hc_thr,pce_fep_lt_hc_thr), na.rm = T))
+print(circos)
+dev.off()
+
+svg("vector_files/NBS05_circos_plot_fep_gt_hc_raw_thr50.svg")
+circos <-  make_chord(data = pce_fep_gt_hc_thr, link_colorscale = "bwr",
+                      min_thre = min(c(pce_fep_gt_hc_thr,pce_fep_lt_hc_thr),na.rm = T), 
+                      max_thre = max(c(pce_fep_gt_hc_thr,pce_fep_lt_hc_thr), na.rm = T))
+print(circos)
+dev.off()
+
+svg("vector_files/NBS05_circos_plot_fep_lt_hc_prop_thr50.svg")
+circos <- make_chord(data = pce_fep_lt_hc_thr_norm, link_colorscale = "bwr",
+                     min_thre = min(c(pce_fep_gt_hc_thr_norm,pce_fep_lt_hc_thr_norm), na.rm = T), 
+                     max_thre = max(c(pce_fep_gt_hc_thr_norm,pce_fep_lt_hc_thr_norm), na.rm = T))
+print(circos)
+dev.off()
+
+svg("vector_files/NBS05_circos_plot_fep_gt_hc_prop_thr50.svg")
+circos <- make_chord(data = pce_fep_gt_hc_thr_norm, link_colorscale = "bwr",
+                     min_thre = min(c(pce_fep_gt_hc_thr_norm,pce_fep_lt_hc_thr_norm), na.rm = T), 
+                     #   max_thre = max(c(pce_fep_gt_hc_thr_norm,pce_fep_lt_hc_thr_norm), na.rm = T))
+                     max_thre = 0.06)
+print(circos)
+dev.off()
+
+```
+
+```{r plot degree on brain}
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/functions/plot_on_brain_pysurf.R")
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/functions/get_nbs_connectome.R")
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/functions/get_node_distance.R")
+library(magick)
+
+#make positive and negative binary matricies 
+fep_lt_hc <- fep_gt_hc <- get_nbs_connectome(type = "commit",  p = 0.05, weighted = T)
+fep_lt_hc[fep_lt_hc < 0] <- 0
+fep_lt_hc[fep_lt_hc != 0] <- 1
+fep_gt_hc[fep_gt_hc > 0] <- 0
+fep_gt_hc[fep_gt_hc != 0] <- 1
+
+fep_lt_hc_degree <- rowSums(fep_lt_hc)
+fep_gt_hc_degree <- rowSums(fep_gt_hc)
+
+labs <- get_labs(remove_fov_rois = F)
+removed_roi <- c(50,51,52, 53, 86, 90, 197,199, 200, 201, 242, 243, 244)
+
+insert <- function(vector, indices, value) {
+  newVector <- vector
+  for (index in indices) {
+    if (index <= length(newVector) + 1) {
+      newVector <- append(newVector, value, after = index - 1)
+    } else {
+      cat("Index", index, "is out of range.\n")
+    }
+  }
+  return(newVector)
+}
+
+
+
+fep_lt_hc_degree  <-  insert(fep_lt_hc_degree, removed_roi,0)
+fep_gt_hc_degree  <- insert(fep_gt_hc_degree, removed_roi, 0)
+
+df_fep_lt_hc <- data.frame(cbind(labs$ROI.Name, c(fep_lt_hc_degree)))
+df_fep_gt_hc <- data.frame(cbind(labs$ROI.Name, c(fep_gt_hc_degree)))
+
+df_fep_lt_hc$X2 <- as.numeric(df_fep_lt_hc$X2)
+df_fep_gt_hc$X2 <- as.numeric(df_fep_gt_hc$X2)
+
+#inflated
+brain_plot_fep_lt_hc_inflated <- plot_on_brain_pysurf(plot_vector = df_fep_lt_hc$X2, 
+                                                      surf = "inflated", 
+                                                      colourscale = "Reds", 
+                                                      min = min(fep_lt_hc_degree, fep_gt_hc_degree), 
+                                                      max = max(fep_lt_hc_degree, fep_gt_hc_degree), 
+                                                      diverging = F)
+image_write(brain_plot_fep_lt_hc_inflated, path = "vector_files/NBS05_degree_plot_fep_lt_hc.svg", format = "svg")
+
+brain_plot_fep_gt_hc_inflated <- plot_on_brain_pysurf(plot_vector = df_fep_gt_hc$X2, 
+                                                      surf = "inflated", 
+                                                      colourscale = "Reds", 
+                                                      min = min(fep_lt_hc_degree, fep_gt_hc_degree), 
+                                                      max = max(fep_lt_hc_degree, fep_gt_hc_degree), 
+                                                      diverging = F)
+image_write(brain_plot_fep_gt_hc_inflated, path = "vector_files/NBS05_degree_plot_fep_gt_hc.svg", format = "svg")
+
+```
+
+
+## CPM
+```{r load libs}
+library(ggplot2)
+library(reshape2)
+```
+
+```{r K-fold change score predictions bl 3m}
+bl3m_results <- readRDS("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/NBS_paper/CPM_results/long_bl3m_raw_cs_kf_sum_0.01_spearman_zscore_NBS_masked.RDS")
+nulls.list <- list.files("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/NBS_paper/CPM_results/cpm_nulls/long_kf_NBSmask_raw_cs//", full.names = T)
+bl3m_nulls <- lapply(nulls.list,  readRDS)
+
+pos_nulls <- matrix(NA, nrow =length(bl3m_nulls), ncol = 6 )
+neg_nulls <- matrix(NA, nrow =length(bl3m_nulls), ncol = 6 )
+for (n in 1:length(bl3m_nulls)) {
+  pos_nulls[n,] <- as.numeric(bl3m_nulls[[n]]$blm3$m3_nullr_pos)
+  neg_nulls[n,] <-  as.numeric(bl3m_nulls[[n]]$blm3$m3_nullr_neg)
+}
+
+
+pos <- as.data.frame(bl3m_results[[1]])
+neg <- as.data.frame(bl3m_results[[2]])
+pos$pred_type <- "pos"
+neg$pred_type <- "neg"
+neg[,-7]  <- apply(neg[,-7], 2, as.numeric)
+pos[,-7]  <- apply(pos[,-7], 2, as.numeric)
+
+#get p
+p_pos <- c()
+p_neg <- c()
+
+for (p in 1:6){
+  p_pos[p] <- sum(pos_nulls[,p] > mean(pos[,p])) / length(pos_nulls[,p])
+  p_neg[p] <- sum(neg_nulls[,p] > mean(neg[,p])) / length(neg_nulls[,p])
+}
+
+p_neg
+p_pos
+
+#plot
+combined_data <- rbind(pos, neg)
+colnames(combined_data) <- c("BPRS", "SOFAS", "SANS", "HAMD", "HAMA", "WHOQ", "pred_type")
+combined_data <- combined_data[,c("SOFAS", "BPRS", "SANS", "HAMD", "HAMA", "WHOQ", "pred_type")]
+# Reshape the data for plotting
+melted_data <- melt(combined_data, id.vars = c("pred_type"))
+
+ylim <- c(-.6,.6)
+
+# Create boxplot
+plot <- ggplot(melted_data, aes(x = variable, y = value, fill = `pred_type`)) +
+  #  geom_boxplot() +
+  geom_point(aes(colour=`pred_type`, group=`pred_type`),
+             position = position_jitterdodge(
+               jitter.width = 0.2,
+               dodge.width  = 0.6),
+             size           = 1.5,
+             alpha          = 0.1) +
+  geom_boxplot(aes(fill=`pred_type`),
+               outlier.shape = NA,
+               width=0.6,
+               alpha= 0, 
+               fatten=1) + 
+  geom_hline(yintercept = 0, color = "black", size = 0.8, linetype = "dashed") + 
+  scale_color_brewer(palette = "Set1") + 
+  xlab("Scale (Δ3 months)") +
+  ylab("Prediction performance (r)") + 
+  theme_classic2() + ylim(ylim) + 
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14))
+plot
+ggsave("vector_files/CPM_all_bl3m.svg", plot = plot, device = "svg", width = 3.9*2, height = 4.5, units = "in")
+
+
+
+```
+
+```{r K-fold change score predictions bl 12m}
+library(ggpubr)
+
+bl12m_results <- readRDS("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/NBS_paper/CPM_results/long_bl12m_raw_cs_kf_sum_0.01_spearman_zscore_NBS_masked.RDS")
+nulls.list <- list.files("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/NBS_paper/CPM_results/cpm_nulls/long_kf_NBSmask_raw_cs//", full.names = T)
+bl12m_nulls <- lapply(nulls.list,  readRDS)
+
+pos_nulls <- matrix(NA, nrow =length(bl12m_nulls), ncol = 6 )
+neg_nulls <- matrix(NA, nrow =length(bl12m_nulls), ncol = 6 )
+for (n in 1:length(bl12m_nulls)) {
+  pos_nulls[n,] <- as.numeric(bl12m_nulls[[n]]$blm12$m12_nullr_pos)
+  neg_nulls[n,] <-  as.numeric(bl12m_nulls[[n]]$blm12$m12_nullr_neg)
+}
+
+
+
+pos <- as.data.frame(bl12m_results[[1]])
+neg <- as.data.frame(bl12m_results[[2]])
+pos$pred_type <- "pos"
+neg$pred_type <- "neg"
+neg[,-7]  <- apply(neg[,-7], 2, as.numeric)
+pos[,-7]  <- apply(pos[,-7], 2, as.numeric)
+
+
+#get p
+p_pos <- c()
+p_neg <- c()
+p_pos_fwe_primary <- c()
+p_neg_fwe_primary <- c()
+p_pos_fwe_secondary <- c()
+p_neg_fwe_secondary <- c()
+p_fwe_nulls_primary <- apply(cbind(pos_nulls[,1:2],neg_nulls[,1:2]), 1, max)
+p_fwe_nulls_secondary <- apply(cbind(pos_nulls[,3:6],neg_nulls[,3:6]), 1, max)
+
+for (p in 1:6){
+  p_pos[p] <- sum(pos_nulls[,p] > mean(pos[,p])) / length(pos_nulls[,p])
+  p_neg[p] <- sum(neg_nulls[,p] > mean(neg[,p])) / length(neg_nulls[,p])
+  p_pos_fwe_primary[p]  <- sum(p_fwe_nulls_primary > mean(pos[,p])) / length(p_fwe_nulls_primary)
+  p_neg_fwe_primary[p]  <- sum(p_fwe_nulls_primary > mean(neg[,p])) / length(p_fwe_nulls_primary)
+  p_pos_fwe_secondary[p]  <- sum(p_fwe_nulls_secondary > mean(neg[,p])) / length(p_fwe_nulls_secondary)
+  p_neg_fwe_secondary[p]  <- sum(p_fwe_nulls_secondary > mean(neg[,p])) / length(p_fwe_nulls_secondary)
+  
+}
+#FWE nulls mat
+
+
+
+#fdr of pre-reg scales
+#P <- c(0.5105740, 0.6898288, 0.6717019, 0.8136959, 0.7301108, 0.4712991, 0.898288016, 0.007) 
+#p.adjust(P, "fdr")
+p_neg
+p_pos
+p_pos_fwe_primary
+p_neg_fwe_primary
+p_pos_fwe_secondary
+p_neg_fwe_secondary
+
+
+combined_data <- rbind(pos, neg)
+colnames(combined_data) <- c("BPRS", "SOFAS", "SANS", "HAMD", "HAMA", "WHOQ", "Feature type")
+combined_data$`Feature type`[combined_data$`Feature type`=="pos"] <- "Positive"
+combined_data$`Feature type`[combined_data$`Feature type`=="neg"] <- "Negative"
+combined_data <- combined_data[,c("SOFAS", "BPRS", "SANS", "HAMD", "HAMA", "WHOQ", "Feature type")]
+combined_data_primary <- combined_data[,c("SOFAS", "BPRS","Feature type")]
+# Reshape the data for plotting
+melted_data <- melt(combined_data_primary, id.vars = c("Feature type"))
+ylim <- c(-.4,.6)
+
+# Create boxplot
+plot <- ggplot(melted_data, aes(x = variable, y = value, fill = `Feature type`)) +
+  #  geom_boxplot() +
+  geom_point(aes(colour=`Feature type`, group=`Feature type`),
+             position = position_jitterdodge(
+               jitter.width = 0.2,
+               dodge.width  = 0.6),
+             size           = 1.5,
+             alpha          = 0.1) +
+  geom_boxplot(aes(fill=`Feature type`),
+               outlier.shape = NA,
+               width=0.6,
+               alpha= 0, 
+               fatten=1) + 
+  geom_hline(yintercept = 0, color = "black", size = 1, linetype = "dashed") + 
+  scale_color_brewer(palette = "Set1") + 
+  xlab("Scale (Δ12 months)") +
+  ylab("Prediction performance (r)") + 
+  theme_classic2() + ylim(ylim) + 
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14))
+ggsave("vector_files/CPM_primary_bl12m.svg", plot = plot, device = "svg", width = 3.9, height = 4.5, units = "in")
+
+
+# Reshape the data for plotting
+melted_data <- melt(combined_data, id.vars = c("Feature type"))
+ylim <- c(-.6,.6)
+
+# Create boxplot
+plot <- ggplot(melted_data, aes(x = variable, y = value, fill = `Feature type`)) +
+  #  geom_boxplot() +
+  geom_point(aes(colour=`Feature type`, group=`Feature type`),
+             position = position_jitterdodge(
+               jitter.width = 0.2,
+               dodge.width  = 0.6),
+             size           = 1.5,
+             alpha          = 0.1) +
+  geom_boxplot(aes(fill=`Feature type`),
+               outlier.shape = NA,
+               width=0.6,
+               alpha= 0, 
+               fatten=1) + 
+  geom_hline(yintercept = 0, color = "black", size = 0.8, linetype = "dashed") + 
+  scale_color_brewer(palette = "Set1") + 
+  xlab("Scale (Δ12 months)") +
+  ylab("Prediction performance (r)") + 
+  theme_classic2() + ylim(ylim) + 
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14))
+ggsave("vector_files/CPM_all_bl12m.svg", plot = plot, device = "svg", width = 3.9*2, height = 4.5, units = "in")
+```
+
+```{r K-fold change score predictions bl 12m feature weights}
+library(ggplot2)
+source('~/Dropbox/Sid/R_files/STAGES_difussion/scripts/functions/get_node_distance.R')
+
+bl12m_results <- readRDS("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/NBS_paper/CPM_results/Full_data_long_bl12m_raw_cs_kf_sum_0.01_spearman_zscore_zt50.RDS")
+
+SOFAS_pos <- array(numeric(),c(319,319,100)) 
+
+for (f in 1:100) {
+  SOFAS_pos[,,f] <- bl12m_results[[f]][[2]]$posMask
+}
+
+SOFAS_pos <- apply(SOFAS_pos, MARGIN = c(1, 2), FUN = sum)
+
+SOFAS_pos_all <- ifelse(SOFAS_pos>=50,1,0)
+
+SOFAS_pos_all_degree <- rowSums(SOFAS_pos_all)
+
+labs <- get_labs(remove_fov_rois = F)
+removed_roi <- c(50,51,52, 53, 86, 90, 197,199, 200, 201, 242, 243, 244)
+
+insert <- function(vector, indices, value) {
+  newVector <- vector
+  for (index in indices) {
+    if (index <= length(newVector) + 1) {
+      newVector <- append(newVector, value, after = index - 1)
+    } else {
+      cat("Index", index, "is out of range.\n")
+    }
+  }
+  return(newVector)
+}
+
+SOFAS_pos_all_degree  <- insert(SOFAS_pos_all_degree, removed_roi, 0)
+
+df <- data.frame(cbind(c(SOFAS_pos_all_degree), labs$ROI.Name))
+df$X1 <- as.numeric(df$X1)
+
+#on brain
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/functions/plot_on_brain_pysurf.R")
+x <- plot_on_brain_pysurf(df$X1, colourscale = "Reds",diverging = F)
+image_write(x, path = "vector_files/CPM_degree_SOFAS_bl12m_50pct.svg", format = "svg")
+
+#by network
+source("~/Dropbox/Sid/R_files/functions/plotClassifiedEdges.R")
+source("~/Dropbox/Sid/R_files/STAGES_fmri/scripts/makeNetworkMatrix2.R")
+
+labels <- c("Visual", "Somatomotor", "Dorsal Attention", "Ventral Attention" , "Limbic",
+            "Frontoparietal", "Default", "MTL", "Thalamus", "Striatum")
+short_labs <- c("Vis", "SomMot", "DorsAttn", 
+                "VentAttn", "Lim", "FPN", "DMN", 
+                "MTL", "Thal", "Stri")
+
+networks <- get_network_ids(remove_fov_rois = T)
+pce <- plotClassifiedEdges(adj =  SOFAS_pos_all, ids = networks$netid, labels = short_labs)
+included_connectome <- read.csv("/Users/sidchopra/Dropbox/Sid/R_files/STAGES_difussion/scripts/NBS_paper/included_edges_zi50_ks_d_o.txt", 
+                                header = T, sep = " ", stringsAsFactors = FALSE)
+pce_hc <- plotClassifiedEdges(adj = included_connectome, ids = networks$netid, labels = short_labs)
+
+mat <- makeNetworkMatrix2(matrix1 = pce[[1]]/pce_hc[[1]], matrix2 =  pce[[1]], pal = "Reds") #
+
+ggsave( "vector_files/CPM_network_SOFAS_bl12m_50pct.svg", mat,"svg", width = 13, height = 9, units = 'in')
+
+#make chord
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/NBS_paper/figures/make_chord.R")
+
+svg("vector_files/CPM_circos_SOFAS_bl12m_50pct.svg")
+plot <- make_chord(data = pce[[1]], link_colorscale = "bwr")
+print(plot)
+dev.off()
+
+svg("vector_files/CPM_circos_SOFAS_bl12m_50pct_norm.svg")
+plot <- make_chord(data = pce[[1]]/pce_hc[[1]], link_colorscale = "bwr")
+print(plot)
+dev.off()
+
+thr_mat <- function(mat=NULL, pct=NULL){
+  thr <- 1-(pct*0.01)
+  ut_mat <- abs(mat[upper.tri(mat)])
+  qthr <- quantile(ut_mat, thr)
+  mat[abs(mat)<qthr] <- 0
+  return(mat)
+}
+
+pct=50
+pce_thr <- thr_mat(mat = pce[[1]],pct = pct)
+pce_norm_thr <- thr_mat(pce[[1]]/pce_hc[[1]],pct)
+
+svg("vector_files/CPM_circos_SOFAS_bl12m_50pct_top50.svg")
+plot <- make_chord(data = pce_thr, link_colorscale = "bwr")
+print(plot)
+dev.off()
+
+svg("vector_files/CPM_circos_SOFAS_bl12m_50pct_norm_top50.svg")
+plot <- make_chord(data = pce_norm_thr, link_colorscale = "bwr")
+print(plot)
+dev.off()
+
+
+#BrainNetworkViewer files
+write.table(SOFAS_pos_all,
+            paste0("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/NBS_paper/figures/BrainNetViewer/SOFAS_CPM_bl_12m_50pct.edge"),
+            col.names = F,
+            row.names = F, 
+            quote = F)
+node_file <- cbind(centroid, network, rowSums(SOFAS_pos_all), roi_name)
+
+write.table(node_file,
+            paste0("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/NBS_paper/figures/BrainNetViewer/SOFAS_CPM_bl_12m_50pct.node"),
+            col.names = F,
+            row.names = F, 
+            quote = F)
+
+```
+
+
+#Sups
+```{r plot network level effects using  zero-threshold 70}
+source("~/Dropbox/Sid/R_files/functions/plotClassifiedEdges.R")
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/functions/get_node_distance.R")
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/functions/get_nbs_connectome.R")
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/NBS_paper/figures/makeNetworkMatrix2.R")
+library(ggplot2)
+
+#make positive and negative binary matricies 
+fep_lt_hc <- fep_gt_hc <- get_nbs_connectome(type = "commit",  p = 0.05, weighted = T, zero_thr = 30)
+fep_lt_hc[fep_lt_hc < 0] <- 0
+fep_lt_hc[fep_lt_hc != 0] <- 1
+fep_gt_hc[fep_gt_hc > 0] <- 0
+fep_gt_hc[fep_gt_hc != 0] <- 1
+
+labels <- c("Visual", "Somatomotor", "Dorsal Attention", "Ventral Attention" , "Limbic",
+            "Frontoparietal", "Default", "MTL", "Thalamus", "Striatum")
+short_labs <- c("Vis", "SomMot", "DorsAttn",  "VentAttn", "Lim", "FPN", "DMN", 
+                "MTL", "Thal", "Stri")
+
+networks <- get_network_ids()
+pce_fep_lt_hc <- plotClassifiedEdges(adj =   fep_lt_hc, ids = network, labels = short_labs)
+pce_fep_gt_hc <- plotClassifiedEdges(adj =   fep_gt_hc, ids = network, labels = short_labs)
+
+
+included_edges <- readRDS("~/Dropbox/Sid/R_files/STAGES_difussion/data/ziGamma_nbs/included_edges_zi30_ks_d_o.RDS") #CHANGE according to included edges
+included_edges <- vec_2_mat(included_edges, 319, 0,lower.tri = T)
+included_edges[is.na(included_edges)] <- 0
+pce_hc <- plotClassifiedEdges(adj = included_edges, ids = network, labels = short_labs)
+makeNetworkMatrix2(matrix1 = pce_hc[[1]], 
+                   matrix2 = pce_hc[[1]]) #
+#whitered <- circlize::colorRamp2(c(0, 1), c("white","red"), space='RGB')
+#whitered <- whitered(seq(0, 1, length.out=100))
+
+mat <- makeNetworkMatrix2(matrix1 = pce_fep_gt_hc[[1]]/pce_hc[[1]], 
+                          matrix2 = pce_fep_gt_hc[[1]],
+                          min1 = min(c(pce_fep_gt_hc[[1]]/pce_hc[[1]], pce_fep_lt_hc[[1]]/pce_hc[[1]])),
+                          min2 = min(pce_fep_gt_hc[[1]], pce_fep_lt_hc[[1]]),
+                          max1 = max(c(pce_fep_gt_hc[[1]]/pce_hc[[1]], pce_fep_lt_hc[[1]]/pce_hc[[1]])),
+                          max2 = max(pce_fep_gt_hc[[1]], pce_fep_lt_hc[[1]])) #
+
+ggsave( "vector_files/supplement_NBS05_zt70_network_plot_fep_gt_hc.svg", mat,"svg", width = 13, height = 9, units = 'in')
+
+mat <- makeNetworkMatrix2(matrix1 = pce_fep_lt_hc[[1]]/pce_hc[[1]], 
+                          matrix2 = pce_fep_lt_hc[[1]],
+                          min1 = min(c(pce_fep_gt_hc[[1]]/pce_hc[[1]], pce_fep_lt_hc[[1]]/pce_hc[[1]])),
+                          min2 = min(pce_fep_gt_hc[[1]], pce_fep_lt_hc[[1]]),
+                          max1 = max(c(pce_fep_gt_hc[[1]]/pce_hc[[1]], pce_fep_lt_hc[[1]]/pce_hc[[1]])),
+                          max2 = max(pce_fep_gt_hc[[1]], pce_fep_lt_hc[[1]]))
+
+ggsave( "vector_files/supplement_NBS05_zt70_network_plot_fep_lt_hc.svg", mat,"svg", width = 13, height = 9, units = 'in')
+```
+
+```{r plot network level effects using  zero-threshold 90}
+source("~/Dropbox/Sid/R_files/functions/plotClassifiedEdges.R")
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/functions/get_node_distance.R")
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/functions/get_nbs_connectome.R")
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/NBS_paper/figures/makeNetworkMatrix2.R")
+library(ggplot2)
+
+#make positive and negative binary matricies 
+fep_lt_hc <- fep_gt_hc <- get_nbs_connectome(type = "commit",  p = 0.05, weighted = T, zero_thr = 10)
+fep_lt_hc[fep_lt_hc < 0] <- 0
+fep_lt_hc[fep_lt_hc != 0] <- 1
+fep_gt_hc[fep_gt_hc > 0] <- 0
+fep_gt_hc[fep_gt_hc != 0] <- 1
+
+labels <- c("Visual", "Somatomotor", "Dorsal Attention", "Ventral Attention" , "Limbic",
+            "Frontoparietal", "Default", "MTL", "Thalamus", "Striatum")
+short_labs <- c("Vis", "SomMot", "DorsAttn",  "VentAttn", "Lim", "FPN", "DMN", 
+                "MTL", "Thal", "Stri")
+
+networks <- get_network_ids()
+pce_fep_lt_hc <- plotClassifiedEdges(adj =   fep_lt_hc, ids = network, labels = short_labs)
+pce_fep_gt_hc <- plotClassifiedEdges(adj =   fep_gt_hc, ids = network, labels = short_labs)
+
+
+included_edges <- readRDS("~/Dropbox/Sid/R_files/STAGES_difussion/data/ziGamma_nbs/included_edges_zi10_ks_d_o.RDS") #CHANGE according to included edges
+included_edges <- vec_2_mat(included_edges, 319, 0,lower.tri = T)
+included_edges[is.na(included_edges)] <- 0
+pce_hc <- plotClassifiedEdges(adj = included_edges, ids = network, labels = short_labs)
+makeNetworkMatrix2(matrix1 = pce_hc[[1]], 
+                   matrix2 = pce_hc[[1]]) #
+#whitered <- circlize::colorRamp2(c(0, 1), c("white","red"), space='RGB')
+#whitered <- whitered(seq(0, 1, length.out=100))
+
+mat <- makeNetworkMatrix2(matrix1 = pce_fep_gt_hc[[1]]/pce_hc[[1]], 
+                          matrix2 = pce_fep_gt_hc[[1]],
+                          min1 = min(c(pce_fep_gt_hc[[1]]/pce_hc[[1]], pce_fep_lt_hc[[1]]/pce_hc[[1]])),
+                          min2 = min(pce_fep_gt_hc[[1]], pce_fep_lt_hc[[1]]),
+                          max1 = max(c(pce_fep_gt_hc[[1]]/pce_hc[[1]], pce_fep_lt_hc[[1]]/pce_hc[[1]])),
+                          max2 = max(pce_fep_gt_hc[[1]], pce_fep_lt_hc[[1]])) #
+
+ggsave( "vector_files/supplement_NBS05_zt90_network_plot_fep_gt_hc.svg", mat,"svg", width = 13, height = 9, units = 'in')
+
+mat <- makeNetworkMatrix2(matrix1 = pce_fep_lt_hc[[1]]/pce_hc[[1]], 
+                          matrix2 = pce_fep_lt_hc[[1]],
+                          min1 = min(c(pce_fep_gt_hc[[1]]/pce_hc[[1]], pce_fep_lt_hc[[1]]/pce_hc[[1]])),
+                          min2 = min(pce_fep_gt_hc[[1]], pce_fep_lt_hc[[1]]),
+                          max1 = max(c(pce_fep_gt_hc[[1]]/pce_hc[[1]], pce_fep_lt_hc[[1]]/pce_hc[[1]])),
+                          max2 = max(pce_fep_gt_hc[[1]], pce_fep_lt_hc[[1]]))
+
+ggsave( "vector_files/supplement_NBS05_zt90_network_plot_fep_lt_hc.svg", mat,"svg", width = 13, height = 9, units = 'in')
+```
+
+```{r chord diagram with proportions zero-threshold 70, fig.width=6, fig.height=6}
+source("~/Dropbox/Sid/R_files/functions/plotClassifiedEdges.R")
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/NBS_paper/figures/makeNetworkMatrix2.R")
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/functions/get_node_distance.R")
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/functions/get_nbs_connectome.R")
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/NBS_paper/figures/make_chord.R")
+library(ggplot2)
+
+#make positive and negative binary matricies 
+fep_lt_hc <- fep_gt_hc <- get_nbs_connectome(type = "commit",  p = 0.05, weighted = T, zero_thr = 30)
+fep_lt_hc[fep_lt_hc < 0] <- 0
+fep_lt_hc[fep_lt_hc != 0] <- 1
+fep_gt_hc[fep_gt_hc > 0] <- 0
+fep_gt_hc[fep_gt_hc != 0] <- 1
+
+labels <- c("Visual", "Somatomotor", "Dorsal Attention", "Ventral Attention" , "Limbic",
+            "Frontoparietal", "Default", "MTL", "Thalamus", "Striatum")
+short_labs <- c("Vis", "SomMot", "DorsAttn",  "VentAttn", "Lim", "FPN", "DMN", 
+                "MTL", "Thal", "Stri")
+
+networks <- get_network_ids()
+network <- c(networks$netid)
+pce_fep_lt_hc <- plotClassifiedEdges(adj =   fep_lt_hc, ids = network, labels = short_labs)
+pce_fep_gt_hc <- plotClassifiedEdges(adj =   fep_gt_hc, ids = network, labels = short_labs)
+
+included_edges <- readRDS("~/Dropbox/Sid/R_files/STAGES_difussion/data/ziGamma_nbs/included_edges_zi30_ks_d_o.RDS") #CHANGE according to included edges
+included_edges <- vec_2_mat(included_edges, 319, 0,lower.tri = T)
+included_edges[is.na(included_edges)] <- 0
+pce_hc <- plotClassifiedEdges(adj = included_edges, ids = network, labels = short_labs)
+
+
+svg("vector_files/NBS05_circos_zt70_plot_fep_lt_hc_raw.svg")
+circos <- make_chord(data = pce_fep_lt_hc[[1]], link_colorscale = "bwr",
+                     min_thre = min(c(pce_fep_gt_hc[[1]],pce_fep_lt_hc[[1]]),na.rm = T), 
+                     max_thre = max(c(pce_fep_gt_hc[[1]],pce_fep_lt_hc[[1]]), na.rm = T))
+print(circos)
+dev.off()
+
+svg("vector_files/NBS05_circos_zt70_plot_fep_lt_hc_prop.svg")
+circos <- make_chord(data = pce_fep_lt_hc[[1]]/pce_hc[[1]], link_colorscale = "bwr",
+                     min_thre = min(c(pce_fep_gt_hc[[1]]/pce_hc[[1]],pce_fep_lt_hc[[1]]/pce_hc[[1]]),na.rm = T), 
+                     max_thre = max(c(pce_fep_gt_hc[[1]]/pce_hc[[1]],pce_fep_lt_hc[[1]]/pce_hc[[1]]), na.rm = T))
+print(circos)
+dev.off()
+
+
+svg("vector_files/NBS05_circos_zt70_plot_fep_gt_hc_raw.svg")
+circos <- make_chord(data = pce_fep_gt_hc[[1]], link_colorscale = "bwr",
+                     min_thre = min(c(pce_fep_gt_hc[[1]],pce_fep_lt_hc[[1]]),na.rm = T), 
+                     max_thre = max(c(pce_fep_gt_hc[[1]],pce_fep_lt_hc[[1]]), na.rm = T))
+print(circos)
+dev.off()
+
+svg("vector_files/NBS05_circos_zt70_plot_fep_gt_hc_prop.svg")
+circos <- make_chord(data = pce_fep_gt_hc[[1]]/pce_hc[[1]], link_colorscale = "bwr",
+                     min_thre = min(c(pce_fep_gt_hc[[1]]/pce_hc[[1]],pce_fep_lt_hc[[1]]/pce_hc[[1]]),na.rm = T), 
+                     #  max_thre = max(c(pce_fep_gt_hc[[1]]/pce_hc[[1]],pce_fep_lt_hc[[1]]/pce_hc[[1]]), na.rm = T))
+                     max_thre = 0.06)
+print(circos)
+dev.off()
+
+
+```
+
+```{r chord diagram with proportions zero-threshold 90, fig.width=6, fig.height=6}
+source("~/Dropbox/Sid/R_files/functions/plotClassifiedEdges.R")
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/NBS_paper/figures/makeNetworkMatrix2.R")
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/functions/get_node_distance.R")
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/functions/get_nbs_connectome.R")
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/NBS_paper/figures/make_chord.R")
+library(ggplot2)
+
+#make positive and negative binary matricies 
+fep_lt_hc <- fep_gt_hc <- get_nbs_connectome(type = "commit",  p = 0.01, weighted = T, zero_thr = 10)
+fep_lt_hc[fep_lt_hc < 0] <- 0
+fep_lt_hc[fep_lt_hc != 0] <- 1
+fep_gt_hc[fep_gt_hc > 0] <- 0
+fep_gt_hc[fep_gt_hc != 0] <- 1
+
+labels <- c("Visual", "Somatomotor", "Dorsal Attention", "Ventral Attention" , "Limbic",
+            "Frontoparietal", "Default", "MTL", "Thalamus", "Striatum")
+short_labs <- c("Vis", "SomMot", "DorsAttn",  "VentAttn", "Lim", "FPN", "DMN", 
+                "MTL", "Thal", "Stri")
+
+networks <- get_network_ids()
+network <- c(networks$netid)
+pce_fep_lt_hc <- plotClassifiedEdges(adj =   fep_lt_hc, ids = network, labels = short_labs)
+pce_fep_gt_hc <- plotClassifiedEdges(adj =   fep_gt_hc, ids = network, labels = short_labs)
+
+included_edges <- readRDS("~/Dropbox/Sid/R_files/STAGES_difussion/data/ziGamma_nbs/included_edges_zi10_ks_d_o.RDS") #CHANGE according to included edges
+included_edges <- vec_2_mat(included_edges, 319, 0,lower.tri = T)
+included_edges[is.na(included_edges)] <- 0
+pce_hc <- plotClassifiedEdges(adj = included_edges, ids = network, labels = short_labs)
+
+
+svg("vector_files/NBS05_circos_zt90_plot_fep_lt_hc_raw.svg")
+circos <- make_chord(data = pce_fep_lt_hc[[1]], link_colorscale = "bwr",
+                     min_thre = min(c(pce_fep_gt_hc[[1]],pce_fep_lt_hc[[1]]),na.rm = T), 
+                     max_thre = max(c(pce_fep_gt_hc[[1]],pce_fep_lt_hc[[1]]), na.rm = T))
+print(circos)
+dev.off()
+
+svg("vector_files/NBS05_circos_zt90_plot_fep_lt_hc_prop.svg")
+circos <- make_chord(data = pce_fep_lt_hc[[1]]/pce_hc[[1]], link_colorscale = "bwr",
+                     min_thre = min(c(pce_fep_gt_hc[[1]]/pce_hc[[1]],pce_fep_lt_hc[[1]]/pce_hc[[1]]),na.rm = T), 
+                     max_thre = max(c(pce_fep_gt_hc[[1]]/pce_hc[[1]],pce_fep_lt_hc[[1]]/pce_hc[[1]]), na.rm = T))
+print(circos)
+dev.off()
+
+
+svg("vector_files/NBS05_circos_zt90_plot_fep_gt_hc_raw.svg")
+circos <- make_chord(data = pce_fep_gt_hc[[1]], link_colorscale = "bwr",
+                     min_thre = min(c(pce_fep_gt_hc[[1]],pce_fep_lt_hc[[1]]),na.rm = T), 
+                     max_thre = max(c(pce_fep_gt_hc[[1]],pce_fep_lt_hc[[1]]), na.rm = T))
+print(circos)
+dev.off()
+
+svg("vector_files/NBS05_circos_zt90_plot_fep_gt_hc_prop.svg")
+circos <- make_chord(data = pce_fep_gt_hc[[1]]/pce_hc[[1]], link_colorscale = "bwr",
+                     min_thre = min(c(pce_fep_gt_hc[[1]]/pce_hc[[1]],pce_fep_lt_hc[[1]]/pce_hc[[1]]),na.rm = T), 
+                     #  max_thre = max(c(pce_fep_gt_hc[[1]]/pce_hc[[1]],pce_fep_lt_hc[[1]]/pce_hc[[1]]), na.rm = T))
+                     max_thre = 0.06)
+print(circos)
+dev.off()
+
+
+```
+
+```{r plot network level effects using  CFT 0.01}
+source("~/Dropbox/Sid/R_files/functions/plotClassifiedEdges.R")
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/functions/get_node_distance.R")
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/functions/get_nbs_connectome.R")
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/NBS_paper/figures/makeNetworkMatrix2.R")
+library(ggplot2)
+
+#make positive and negative binary matricies 
+fep_lt_hc <- fep_gt_hc <- get_nbs_connectome(type = "commit",  p = 0.01, weighted = T)
+fep_lt_hc[fep_lt_hc < 0] <- 0
+fep_lt_hc[fep_lt_hc != 0] <- 1
+fep_gt_hc[fep_gt_hc > 0] <- 0
+fep_gt_hc[fep_gt_hc != 0] <- 1
+
+labels <- c("Visual", "Somatomotor", "Dorsal Attention", "Ventral Attention" , "Limbic",
+            "Frontoparietal", "Default", "MTL", "Thalamus", "Striatum")
+short_labs <- c("Vis", "SomMot", "DorsAttn",  "VentAttn", "Lim", "FPN", "DMN", 
+                "MTL", "Thal", "Stri")
+
+networks <- get_network_ids()
+pce_fep_lt_hc <- plotClassifiedEdges(adj =   fep_lt_hc, ids = network, labels = short_labs)
+pce_fep_gt_hc <- plotClassifiedEdges(adj =   fep_gt_hc, ids = network, labels = short_labs)
+
+
+included_edges <- readRDS("~/Dropbox/Sid/R_files/STAGES_difussion/data/ziGamma_nbs/included_edges_zi20_ks_d_o.RDS") #CHANGE according to included edges
+included_edges <- vec_2_mat(included_edges, 319, 0,lower.tri = T)
+included_edges[is.na(included_edges)] <- 0
+pce_hc <- plotClassifiedEdges(adj = included_edges, ids = network, labels = short_labs)
+makeNetworkMatrix2(matrix1 = pce_hc[[1]], 
+                   matrix2 = pce_hc[[1]]) #
+#whitered <- circlize::colorRamp2(c(0, 1), c("white","red"), space='RGB')
+#whitered <- whitered(seq(0, 1, length.out=100))
+
+mat <- makeNetworkMatrix2(matrix1 = pce_fep_gt_hc[[1]]/pce_hc[[1]], 
+                          matrix2 = pce_fep_gt_hc[[1]],
+                          min1 = min(c(pce_fep_gt_hc[[1]]/pce_hc[[1]], pce_fep_lt_hc[[1]]/pce_hc[[1]])),
+                          min2 = min(pce_fep_gt_hc[[1]], pce_fep_lt_hc[[1]]),
+                          max1 = max(c(pce_fep_gt_hc[[1]]/pce_hc[[1]], pce_fep_lt_hc[[1]]/pce_hc[[1]])),
+                          max2 = max(pce_fep_gt_hc[[1]], pce_fep_lt_hc[[1]])) #
+
+ggsave( "vector_files/supplement_NBS01_network_plot_fep_gt_hc.svg", mat,"svg", width = 13, height = 9, units = 'in')
+
+mat <- makeNetworkMatrix2(matrix1 = pce_fep_lt_hc[[1]]/pce_hc[[1]], 
+                          matrix2 = pce_fep_lt_hc[[1]],
+                          min1 = min(c(pce_fep_gt_hc[[1]]/pce_hc[[1]], pce_fep_lt_hc[[1]]/pce_hc[[1]])),
+                          min2 = min(pce_fep_gt_hc[[1]], pce_fep_lt_hc[[1]]),
+                          max1 = max(c(pce_fep_gt_hc[[1]]/pce_hc[[1]], pce_fep_lt_hc[[1]]/pce_hc[[1]])),
+                          max2 = max(pce_fep_gt_hc[[1]], pce_fep_lt_hc[[1]]))
+
+ggsave( "vector_files/supplement_NBS01_network_plot_fep_lt_hc.svg", mat,"svg", width = 13, height = 9, units = 'in')
+```
+
+```{r chord diagram with proportionsusing CFT 0.01, fig.width=6, fig.height=6}
+source("~/Dropbox/Sid/R_files/functions/plotClassifiedEdges.R")
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/NBS_paper/figures/makeNetworkMatrix2.R")
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/functions/get_node_distance.R")
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/functions/get_nbs_connectome.R")
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/NBS_paper/figures/make_chord.R")
+library(ggplot2)
+
+#make positive and negative binary matricies 
+fep_lt_hc <- fep_gt_hc <- get_nbs_connectome(type = "commit",  p = 0.01, weighted = T, zero_thr = 20)
+fep_lt_hc[fep_lt_hc < 0] <- 0
+fep_lt_hc[fep_lt_hc != 0] <- 1
+fep_gt_hc[fep_gt_hc > 0] <- 0
+fep_gt_hc[fep_gt_hc != 0] <- 1
+
+labels <- c("Visual", "Somatomotor", "Dorsal Attention", "Ventral Attention" , "Limbic",
+            "Frontoparietal", "Default", "MTL", "Thalamus", "Striatum")
+short_labs <- c("Vis", "SomMot", "DorsAttn",  "VentAttn", "Lim", "FPN", "DMN", 
+                "MTL", "Thal", "Stri")
+
+networks <- get_network_ids()
+network <- c(networks$netid)
+pce_fep_lt_hc <- plotClassifiedEdges(adj =   fep_lt_hc, ids = network, labels = short_labs)
+pce_fep_gt_hc <- plotClassifiedEdges(adj =   fep_gt_hc, ids = network, labels = short_labs)
+
+included_edges <- readRDS("~/Dropbox/Sid/R_files/STAGES_difussion/data/ziGamma_nbs/included_edges_zi10_ks_d_o.RDS") #CHANGE according to included edges
+included_edges <- vec_2_mat(included_edges, 319, 0,lower.tri = T)
+included_edges[is.na(included_edges)] <- 0
+pce_hc <- plotClassifiedEdges(adj = included_edges, ids = network, labels = short_labs)
+
+
+svg("vector_files/NBS05_circos_zt90_plot_fep_lt_hc_raw.svg")
+circos <- make_chord(data = pce_fep_lt_hc[[1]], link_colorscale = "bwr",
+                     min_thre = min(c(pce_fep_gt_hc[[1]],pce_fep_lt_hc[[1]]),na.rm = T), 
+                     max_thre = max(c(pce_fep_gt_hc[[1]],pce_fep_lt_hc[[1]]), na.rm = T))
+print(circos)
+dev.off()
+
+svg("vector_files/NBS05_circos_zt90_plot_fep_lt_hc_prop.svg")
+circos <- make_chord(data = pce_fep_lt_hc[[1]]/pce_hc[[1]], link_colorscale = "bwr",
+                     min_thre = min(c(pce_fep_gt_hc[[1]]/pce_hc[[1]],pce_fep_lt_hc[[1]]/pce_hc[[1]]),na.rm = T), 
+                     max_thre = max(c(pce_fep_gt_hc[[1]]/pce_hc[[1]],pce_fep_lt_hc[[1]]/pce_hc[[1]]), na.rm = T))
+print(circos)
+dev.off()
+
+
+svg("vector_files/NBS05_circos_zt90_plot_fep_gt_hc_raw.svg")
+circos <- make_chord(data = pce_fep_gt_hc[[1]], link_colorscale = "bwr",
+                     min_thre = min(c(pce_fep_gt_hc[[1]],pce_fep_lt_hc[[1]]),na.rm = T), 
+                     max_thre = max(c(pce_fep_gt_hc[[1]],pce_fep_lt_hc[[1]]), na.rm = T))
+print(circos)
+dev.off()
+
+svg("vector_files/NBS05_circos_zt90_plot_fep_gt_hc_prop.svg")
+circos <- make_chord(data = pce_fep_gt_hc[[1]]/pce_hc[[1]], link_colorscale = "bwr",
+                     min_thre = min(c(pce_fep_gt_hc[[1]]/pce_hc[[1]],pce_fep_lt_hc[[1]]/pce_hc[[1]]),na.rm = T), 
+                     #  max_thre = max(c(pce_fep_gt_hc[[1]]/pce_hc[[1]],pce_fep_lt_hc[[1]]/pce_hc[[1]]), na.rm = T))
+                     max_thre = 0.06)
+print(circos)
+dev.off()
+
+
+```
+
+```{r K-fold change score predictions bl 12m using p05 001 feature thresh}
+library(ggpubr)
+
+bl12m_results <- readRDS("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/NBS_paper/CPM_results/long_bl12m_raw_cs_kf_sum_0.001_spearman_zscore_NBS_masked.RDS")
+
+pos <- as.data.frame(bl12m_results[[1]])
+neg <- as.data.frame(bl12m_results[[2]])
+pos$pred_type <- "pos"
+neg$pred_type <- "neg"
+neg[,-7]  <- apply(neg[,-7], 2, as.numeric)
+pos[,-7]  <- apply(pos[,-7], 2, as.numeric)
+
+
+combined_data <- rbind(pos, neg)
+colnames(combined_data) <- c("BPRS", "SOFAS", "SANS", "HAMD", "HAMA", "WHOQ", "Feature type")
+combined_data$`Feature type`[combined_data$`Feature type`=="pos"] <- "Positive"
+combined_data$`Feature type`[combined_data$`Feature type`=="neg"] <- "Negative"
+combined_data <- combined_data[,c("SOFAS", "BPRS", "SANS", "HAMD", "HAMA", "WHOQ", "Feature type")]
+combined_data_primary <- combined_data[,c("SOFAS", "BPRS","Feature type")]
+# Reshape the data for plotting
+
+melted_data <- melt(combined_data_primary, id.vars = c("Feature type"))
+ylim <- c(-.4,.6)
+
+# Create boxplot
+plot <- ggplot(melted_data, aes(x = variable, y = value, fill = `Feature type`)) +
+  #  geom_boxplot() +
+  geom_point(aes(colour=`Feature type`, group=`Feature type`),
+             position = position_jitterdodge(
+               jitter.width = 0.2,
+               dodge.width  = 0.6),
+             size           = 1.5,
+             alpha          = 0.1) +
+  geom_boxplot(aes(fill=`Feature type`),
+               outlier.shape = NA,
+               width=0.6,
+               alpha= 0, 
+               fatten=1) + 
+  geom_hline(yintercept = 0, color = "black", size = 1, linetype = "dashed") + 
+  scale_color_brewer(palette = "Set1") + 
+  xlab("Scale (Δ12 months)") +
+  ylab("Prediction performance (r)") + 
+  theme_classic2() + ylim(ylim) + 
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14))
+ggsave("vector_files/supplement_CPM_primary_bl12m_p001.svg", plot = plot, device = "svg", width = 3.9, height = 4.5, units = "in")
+
+
+# Reshape the data for plotting
+melted_data <- melt(combined_data, id.vars = c("Feature type"))
+ylim <- c(-.4,.6)
+
+# Create boxplot
+plot <- ggplot(melted_data, aes(x = variable, y = value, fill = `Feature type`)) +
+  #  geom_boxplot() +
+  geom_point(aes(colour=`Feature type`, group=`Feature type`),
+             position = position_jitterdodge(
+               jitter.width = 0.2,
+               dodge.width  = 0.6),
+             size           = 1.5,
+             alpha          = 0.1) +
+  geom_boxplot(aes(fill=`Feature type`),
+               outlier.shape = NA,
+               width=0.6,
+               alpha= 0, 
+               fatten=1) + 
+  geom_hline(yintercept = 0, color = "black", size = 0.8, linetype = "dashed") + 
+  scale_color_brewer(palette = "Set1") + 
+  xlab("Scale (Δ12 months)") +
+  ylab("Prediction performance (r)") + 
+  theme_classic2() + ylim(ylim) + 
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14))
+ggsave("vector_files/supplement_CPM_all_bl12m_p001.svg", plot = plot, device = "svg", width = 3.9*2, height = 4.5, units = "in")
+```
+
+```{r K-fold change score predictions bl 12m feature weights at diff inclusion thresholds for interpretaion}
+library(ggplot2)
+source('~/Dropbox/Sid/R_files/STAGES_difussion/scripts/functions/get_node_distance.R')
+
+bl12m_results <- readRDS("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/NBS_paper/CPM_results/Full_data_long_bl12m_raw_cs_kf_sum_0.01_spearman_zscore_zt50.RDS")
+
+SOFAS_pos <- array(numeric(),c(319,319,100)) 
+
+for (f in 1:100) {
+  SOFAS_pos[,,f] <- bl12m_results[[f]][[2]]$posMask
+}
+
+SOFAS_pos <- apply(SOFAS_pos, MARGIN = c(1, 2), FUN = sum)
+
+SOFAS_pos_all <- ifelse(SOFAS_pos>=100,1,0) #change thr here
+
+SOFAS_pos_all_degree <- rowSums(SOFAS_pos_all)
+
+labs <- get_labs(remove_fov_rois = F)
+removed_roi <- c(50,51,52, 53, 86, 90, 197,199, 200, 201, 242, 243, 244)
+
+insert <- function(vector, indices, value) {
+  newVector <- vector
+  for (index in indices) {
+    if (index <= length(newVector) + 1) {
+      newVector <- append(newVector, value, after = index - 1)
+    } else {
+      cat("Index", index, "is out of range.\n")
+    }
+  }
+  return(newVector)
+}
+
+SOFAS_pos_all_degree  <- insert(SOFAS_pos_all_degree, removed_roi, 0)
+
+df <- data.frame(cbind(c(SOFAS_pos_all_degree), labs$ROI.Name))
+df$X1 <- as.numeric(df$X1)
+
+#on brain
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/functions/plot_on_brain_pysurf.R")
+x <- plot_on_brain_pysurf(df$X1, colourscale = "Reds",diverging = F)
+image_write(x, path = "vector_files/supplement_CPM_degree_SOFAS_bl12m_100pct.svg", format = "svg")
+
+#by network
+source("~/Dropbox/Sid/R_files/functions/plotClassifiedEdges.R")
+source("~/Dropbox/Sid/R_files/STAGES_fmri/scripts/makeNetworkMatrix2.R")
+
+labels <- c("Visual", "Somatomotor", "Dorsal Attention", "Ventral Attention" , "Limbic",
+            "Frontoparietal", "Default", "MTL", "Thalamus", "Striatum")
+short_labs <- c("Vis", "SomMot", "DorsAttn", 
+                "VentAttn", "Lim", "FPN", "DMN", 
+                "MTL", "Thal", "Stri")
+
+networks <- get_network_ids(remove_fov_rois = T)
+pce <- plotClassifiedEdges(adj =  SOFAS_pos_all, ids = networks$netid, labels = short_labs)
+included_connectome <- read.csv("/Users/sidchopra/Dropbox/Sid/R_files/STAGES_difussion/scripts/NBS_paper/included_edges_zi50_ks_d_o.txt", 
+                                header = T, sep = " ", stringsAsFactors = FALSE)
+pce_hc <- plotClassifiedEdges(adj = included_connectome, ids = networks$netid, labels = short_labs)
+
+mat <- makeNetworkMatrix2(matrix1 = pce[[1]]/pce_hc[[1]], matrix2 =  pce[[1]], pal = "Reds") #
+
+ggsave( "vector_files/supplement_CPM_network_SOFAS_bl12m_80pct.svg", mat,"svg", width = 13, height = 9, units = 'in')
+
+#make chord
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/NBS_paper/figures/make_chord.R")
+
+svg("vector_files/supplement_CPM_circos_SOFAS_bl12m_100pct.svg")
+plot <- make_chord(data = pce[[1]], link_colorscale = "bwr")
+print(plot)
+dev.off()
+
+svg("vector_files/supplement_CPM_circos_SOFAS_bl12m_100pct_norm.svg")
+plot <- make_chord(data = pce[[1]]/pce_hc[[1]], link_colorscale = "bwr")
+print(plot)
+dev.off()
+
+thr_mat <- function(mat=NULL, pct=NULL){
+  thr <- 1-(pct*0.01)
+  ut_mat <- abs(mat[upper.tri(mat)])
+  qthr <- quantile(ut_mat, thr)
+  mat[abs(mat)<qthr] <- 0
+  return(mat)
+}
+
+
+#pct=50
+#pce_thr <- thr_mat(mat = pce[[1]],pct = pct)
+#pce_norm_thr <- thr_mat(pce[[1]]/pce_hc[[1]],pct)
+#
+#svg("vector_files/CPM_circos_SOFAS_bl12m_50pct_top50.svg")
+#plot <- make_chord(data = pce_thr, link_colorscale = "bwr")
+#print(plot)
+#dev.off()
+#
+#svg("vector_files/CPM_circos_SOFAS_bl12m_50pct_norm_top50.svg")
+#plot <- make_chord(data = pce_norm_thr, link_colorscale = "bwr")
+#print(plot)
+#dev.off()
+#
+#
+#BrainNetworkViewer files
+write.table(SOFAS_pos_all,
+            paste0("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/NBS_paper/figures/BrainNetViewer/sup_SOFAS_CPM_bl_12m_100pct.edge"),
+            col.names = F,
+            row.names = F, 
+            quote = F)
+node_file <- cbind(centroid, network, rowSums(SOFAS_pos_all), roi_name)
+
+write.table(node_file,
+            paste0("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/NBS_paper/figures/BrainNetViewer/sup_SOFAS_CPM_bl_12m_100pct.node"),
+            col.names = F,
+            row.names = F, 
+            quote = F)
+
+```
+
+```{r K-fold change score predictions bl 12m feature weights - WHOQ}
+library(ggplot2)
+source('~/Dropbox/Sid/R_files/STAGES_difussion/scripts/functions/get_node_distance.R')
+
+bl12m_results <- readRDS("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/NBS_paper/CPM_results/Full_data_long_bl12m_raw_cs_kf_sum_0.01_spearman_zscore_zt50.RDS")
+
+WHOQ_pos <- array(numeric(),c(319,319,100)) 
+
+for (f in 1:100) {
+  WHOQ_pos[,,f] <- bl12m_results[[f]][[6]]$posMask #whoq
+}
+
+WHOQ_pos <- apply(WHOQ_pos, MARGIN = c(1, 2), FUN = sum)
+
+WHOQ_pos_all <- ifelse(WHOQ_pos>=50,1,0)
+
+WHOQ_pos_all_degree <- rowSums(WHOQ_pos_all)
+
+labs <- get_labs(remove_fov_rois = F)
+removed_roi <- c(50,51,52, 53, 86, 90, 197,199, 200, 201, 242, 243, 244)
+
+insert <- function(vector, indices, value) {
+  newVector <- vector
+  for (index in indices) {
+    if (index <= length(newVector) + 1) {
+      newVector <- append(newVector, value, after = index - 1)
+    } else {
+      cat("Index", index, "is out of range.\n")
+    }
+  }
+  return(newVector)
+}
+
+WHOQ_pos_all_degree  <- insert(WHOQ_pos_all_degree, removed_roi, 0)
+
+df <- data.frame(cbind(c(WHOQ_pos_all_degree), labs$ROI.Name))
+df$X1 <- as.numeric(df$X1)
+
+#on brain
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/functions/plot_on_brain_pysurf.R")
+x <- plot_on_brain_pysurf(df$X1, colourscale = "Reds",diverging = F)
+image_write(x, path = "vector_files/supplement_CPM_degree_WHOQ_bl12m_50pct.svg", format = "svg")
+
+#by network
+source("~/Dropbox/Sid/R_files/functions/plotClassifiedEdges.R")
+source("~/Dropbox/Sid/R_files/STAGES_fmri/scripts/makeNetworkMatrix2.R")
+
+labels <- c("Visual", "Somatomotor", "Dorsal Attention", "Ventral Attention" , "Limbic",
+            "Frontoparietal", "Default", "MTL", "Thalamus", "Striatum")
+short_labs <- c("Vis", "SomMot", "DorsAttn", 
+                "VentAttn", "Lim", "FPN", "DMN", 
+                "MTL", "Thal", "Stri")
+
+networks <- get_network_ids(remove_fov_rois = T)
+pce <- plotClassifiedEdges(adj =  WHOQ_pos_all, ids = networks$netid, labels = short_labs)
+included_connectome <- read.csv("/Users/sidchopra/Dropbox/Sid/R_files/STAGES_difussion/scripts/NBS_paper/included_edges_zi50_ks_d_o.txt", 
+                                header = T, sep = " ", stringsAsFactors = FALSE)
+pce_hc <- plotClassifiedEdges(adj = included_connectome, ids = networks$netid, labels = short_labs)
+
+mat <- makeNetworkMatrix2(matrix1 = pce[[1]]/pce_hc[[1]], matrix2 =  pce[[1]], pal = "Reds") #
+
+ggsave( "vector_files/supplement_CPM_network_WHOQ_bl12m_50pct.svg", mat,"svg", width = 13, height = 9, units = 'in')
+
+#make chord
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/NBS_paper/figures/make_chord.R")
+
+svg("vector_files/supplement_CPM_circos_WHOQ_bl12m_50pct.svg")
+plot <- make_chord(data = pce[[1]], link_colorscale = "bwr")
+print(plot)
+dev.off()
+
+svg("vector_files/CPM_supplement_circos_WHOQ_bl12m_50pct_norm.svg")
+plot <- make_chord(data = pce[[1]]/pce_hc[[1]], link_colorscale = "bwr")
+print(plot)
+dev.off()
+
+#thr_mat <- function(mat=NULL, pct=NULL){
+#  thr <- 1-(pct*0.01)
+#  ut_mat <- abs(mat[upper.tri(mat)])
+#  qthr <- quantile(ut_mat, thr)
+#  mat[abs(mat)<qthr] <- 0
+#  return(mat)
+#}
+#
+#pct=50
+#pce_thr <- thr_mat(mat = pce[[1]],pct = pct)
+#pce_norm_thr <- thr_mat(pce[[1]]/pce_hc[[1]],pct)
+#
+#svg("vector_files/CPM_circos_WHOQ_bl12m_50pct_top50.svg")
+#plot <- make_chord(data = pce_thr, link_colorscale = "bwr")
+#print(plot)
+#dev.off()
+#
+#svg("vector_files/CPM_circos_WHOQ_bl12m_50pct_norm_top50.svg")
+#plot <- make_chord(data = pce_norm_thr, link_colorscale = "bwr")
+#print(plot)
+#dev.off()
+#
+#
+##BrainNetworkViewer files
+#write.table(WHOQ_pos_all,
+#            paste0("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/NBS_paper/figures/BrainNetViewer/WHOQ_CPM_bl_12m_50pct.edge"),
+#            col.names = F,
+#            row.names = F, 
+#            quote = F)
+#node_file <- cbind(centroid, network, rowSums(WHOQ_pos_all), roi_name)
+#
+#write.table(node_file,
+#            paste0("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/NBS_paper/figures/BrainNetViewer/WHOQ_CPM_bl_12m_50pct.node"),
+#            col.names = F,
+#            row.names = F, 
+#            quote = F)
+#
+```
+
+```{r plot network level effects after removing patients w/SIP and missing Dx}
+source("~/Dropbox/Sid/R_files/functions/plotClassifiedEdges.R")
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/functions/get_node_distance.R")
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/functions/get_nbs_connectome.R")
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/NBS_paper/figures/makeNetworkMatrix2.R")
+library(ggplot2)
+
+#make positive and negative binary matricies 
+fep_lt_hc <- fep_gt_hc <- get_nbs_connectome(type = "commit",  p = 0.05, weighted = T, remove.SIP.MissDx = T)
+fep_lt_hc[fep_lt_hc < 0] <- 0
+fep_lt_hc[fep_lt_hc != 0] <- 1
+fep_gt_hc[fep_gt_hc > 0] <- 0
+fep_gt_hc[fep_gt_hc != 0] <- 1
+
+labels <- c("Visual", "Somatomotor", "Dorsal Attention", "Ventral Attention" , "Limbic",
+            "Frontoparietal", "Default", "MTL", "Thalamus", "Striatum")
+short_labs <- c("Vis", "SomMot", "DorsAttn",  "VentAttn", "Lim", "FPN", "DMN", 
+                "MTL", "Thal", "Stri")
+
+networks <- get_network_ids()
+
+pce_fep_lt_hc <- plotClassifiedEdges(adj =   fep_lt_hc, ids = networks, labels = short_labs)
+pce_fep_gt_hc <- plotClassifiedEdges(adj =   fep_gt_hc, ids = networks, labels = short_labs)
+
+
+included_edges <- readRDS("~/Dropbox/Sid/R_files/STAGES_difussion/data/ziGamma_nbs/included_edges_zi20_ks_d_o.RDS") #CHANGE according to included edges
+included_edges <- vec_2_mat(included_edges, 319, 0,lower.tri = T)
+included_edges[is.na(included_edges)] <- 0
+
+pce_hc <- plotClassifiedEdges(adj = included_edges, ids = networks, labels = short_labs)
+
+makeNetworkMatrix2(matrix1 = pce_hc[[1]], 
+                   matrix2 = pce_hc[[1]]) #
+#whitered <- circlize::colorRamp2(c(0, 1), c("white","red"), space='RGB')
+#whitered <- whitered(seq(0, 1, length.out=100))
+
+mat <- makeNetworkMatrix2(matrix1 = pce_fep_gt_hc[[1]]/pce_hc[[1]], 
+                          matrix2 = pce_fep_gt_hc[[1]],
+                          min1 = min(c(pce_fep_gt_hc[[1]]/pce_hc[[1]], pce_fep_lt_hc[[1]]/pce_hc[[1]])),
+                          min2 = min(pce_fep_gt_hc[[1]], pce_fep_lt_hc[[1]]),
+                          max1 = max(c(pce_fep_gt_hc[[1]]/pce_hc[[1]], pce_fep_lt_hc[[1]]/pce_hc[[1]])),
+                          max2 = max(pce_fep_gt_hc[[1]], pce_fep_lt_hc[[1]])) #
+
+ggsave( "vector_files/NBS05_network_plot_fep_gt_hc_NoSIP.svg", mat,"svg", width = 13, height = 9, units = 'in')
+
+mat <- makeNetworkMatrix2(matrix1 = pce_fep_lt_hc[[1]]/pce_hc[[1]], 
+                          matrix2 = pce_fep_lt_hc[[1]],
+                          min1 = min(c(pce_fep_gt_hc[[1]]/pce_hc[[1]], pce_fep_lt_hc[[1]]/pce_hc[[1]])),
+                          min2 = min(pce_fep_gt_hc[[1]], pce_fep_lt_hc[[1]]),
+                          max1 = max(c(pce_fep_gt_hc[[1]]/pce_hc[[1]], pce_fep_lt_hc[[1]]/pce_hc[[1]])),
+                          max2 = max(pce_fep_gt_hc[[1]], pce_fep_lt_hc[[1]]))
+
+ggsave( "vector_files/NBS05_network_plot_fep_lt_hc_noSIP.svg", mat,"svg", width = 13, height = 9, units = 'in')
+
+```
+
+```{r plot group diff chords after removing patients w/SIP and missing Dx}
+source("~/Dropbox/Sid/R_files/functions/plotClassifiedEdges.R")
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/NBS_paper/figures/makeNetworkMatrix2.R")
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/functions/get_node_distance.R")
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/functions/get_nbs_connectome.R")
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/NBS_paper/figures/make_chord.R")
+library(ggplot2)
+
+#make positive and negative binary matricies 
+fep_lt_hc <- fep_gt_hc <- get_nbs_connectome(type = "commit",  p = 0.05, weighted = T, remove.SIP.MissDx = T)
+fep_lt_hc[fep_lt_hc < 0] <- 0
+fep_lt_hc[fep_lt_hc != 0] <- 1
+fep_gt_hc[fep_gt_hc > 0] <- 0
+fep_gt_hc[fep_gt_hc != 0] <- 1
+
+labels <- c("Visual", "Somatomotor", "Dorsal Attention", "Ventral Attention" , "Limbic",
+            "Frontoparietal", "Default", "MTL", "Thalamus", "Striatum")
+short_labs <- c("Vis", "SomMot", "DorsAttn",  "VentAttn", "Lim", "FPN", "DMN", 
+                "MTL", "Thal", "Stri")
+
+networks <- get_network_ids()
+
+pce_fep_lt_hc <- plotClassifiedEdges(adj =   fep_lt_hc, ids = networks, labels = short_labs)
+pce_fep_gt_hc <- plotClassifiedEdges(adj =   fep_gt_hc, ids = networks, labels = short_labs)
+
+included_edges <- readRDS("~/Dropbox/Sid/R_files/STAGES_difussion/data/ziGamma_nbs/included_edges_zi20_ks_d_o.RDS") #CHANGE according to included edges
+included_edges <- vec_2_mat(included_edges, 319, 0,lower.tri = T)
+included_edges[is.na(included_edges)] <- 0
+pce_hc <- plotClassifiedEdges(adj = included_edges, ids = networks, labels = short_labs)
+
+
+svg("vector_files/NBS05_circos_plot_fep_lt_hc_raw_noSIP.svg")
+circos <- make_chord(data = pce_fep_lt_hc[[1]], link_colorscale = "bwr",
+                     min_thre = min(c(pce_fep_gt_hc[[1]],pce_fep_lt_hc[[1]]),na.rm = T), 
+                     max_thre = max(c(pce_fep_gt_hc[[1]],pce_fep_lt_hc[[1]]), na.rm = T))
+print(circos)
+dev.off()
+
+svg("vector_files/NBS05_circos_plot_fep_lt_hc_prop_noSIP.svg")
+circos <- make_chord(data = pce_fep_lt_hc[[1]]/pce_hc[[1]], link_colorscale = "bwr",
+                     min_thre = min(c(pce_fep_gt_hc[[1]]/pce_hc[[1]],pce_fep_lt_hc[[1]]/pce_hc[[1]]),na.rm = T), 
+                     max_thre = max(c(pce_fep_gt_hc[[1]]/pce_hc[[1]],pce_fep_lt_hc[[1]]/pce_hc[[1]]), na.rm = T))
+print(circos)
+dev.off()
+
+
+svg("vector_files/NBS05_circos_plot_fep_gt_hc_raw_noSIP.svg")
+circos <- make_chord(data = pce_fep_gt_hc[[1]], link_colorscale = "bwr",
+                     min_thre = min(c(pce_fep_gt_hc[[1]],pce_fep_lt_hc[[1]]),na.rm = T), 
+                     max_thre = max(c(pce_fep_gt_hc[[1]],pce_fep_lt_hc[[1]]), na.rm = T))
+print(circos)
+dev.off()
+
+svg("vector_files/NBS05_circos_plot_fep_gt_hc_prop_noSIP.svg")
+circos <- make_chord(data = pce_fep_gt_hc[[1]]/pce_hc[[1]], link_colorscale = "bwr",
+                     min_thre = min(c(pce_fep_gt_hc[[1]]/pce_hc[[1]],pce_fep_lt_hc[[1]]/pce_hc[[1]]),na.rm = T), 
+                       max_thre = max(c(pce_fep_gt_hc[[1]]/pce_hc[[1]],pce_fep_lt_hc[[1]]/pce_hc[[1]]), na.rm = T))
+                     
+print(circos)
+dev.off()
+```
+
+```{r plot degree on brain after removing SIP and missing DX ppts}
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/functions/plot_on_brain_pysurf.R")
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/functions/get_nbs_connectome.R")
+source("~/Dropbox/Sid/R_files/STAGES_difussion/scripts/functions/get_node_distance.R")
+library(magick)
+
+#make positive and negative binary matricies 
+fep_lt_hc <- fep_gt_hc <- get_nbs_connectome(type = "commit",  p = 0.05, weighted = T, remove.SIP.MissDx = T)
+fep_lt_hc[fep_lt_hc < 0] <- 0
+fep_lt_hc[fep_lt_hc != 0] <- 1
+fep_gt_hc[fep_gt_hc > 0] <- 0
+fep_gt_hc[fep_gt_hc != 0] <- 1
+
+fep_lt_hc_degree <- rowSums(fep_lt_hc)
+fep_gt_hc_degree <- rowSums(fep_gt_hc)
+
+labs <- get_labs(remove_fov_rois = F)
+removed_roi <- c(50,51,52, 53, 86, 90, 197,199, 200, 201, 242, 243, 244)
+
+insert <- function(vector, indices, value) {
+  newVector <- vector
+  for (index in indices) {
+    if (index <= length(newVector) + 1) {
+      newVector <- append(newVector, value, after = index - 1)
+    } else {
+      cat("Index", index, "is out of range.\n")
+    }
+  }
+  return(newVector)
+}
+
+
+
+fep_lt_hc_degree  <-  insert(fep_lt_hc_degree, removed_roi,0)
+fep_gt_hc_degree  <- insert(fep_gt_hc_degree, removed_roi, 0)
+
+df_fep_lt_hc <- data.frame(cbind(labs$ROI.Name, c(fep_lt_hc_degree)))
+df_fep_gt_hc <- data.frame(cbind(labs$ROI.Name, c(fep_gt_hc_degree)))
+
+df_fep_lt_hc$X2 <- as.numeric(df_fep_lt_hc$X2)
+df_fep_gt_hc$X2 <- as.numeric(df_fep_gt_hc$X2)
+
+#inflated
+brain_plot_fep_lt_hc_inflated <- plot_on_brain_pysurf(plot_vector = df_fep_lt_hc$X2, 
+                                                      surf = "inflated", 
+                                                      colourscale = "Reds", 
+                                                      min = min(fep_lt_hc_degree, fep_gt_hc_degree), 
+                                                      max = max(fep_lt_hc_degree, fep_gt_hc_degree), 
+                                                      diverging = F)
+image_write(brain_plot_fep_lt_hc_inflated, path = "vector_files/NBS05_degree_plot_fep_lt_hc_noSIP.svg", format = "svg")
+
+brain_plot_fep_gt_hc_inflated <- plot_on_brain_pysurf(plot_vector = df_fep_gt_hc$X2, 
+                                                      surf = "inflated", 
+                                                      colourscale = "Reds", 
+                                                      min = min(fep_lt_hc_degree, fep_gt_hc_degree), 
+                                                      max = max(fep_lt_hc_degree, fep_gt_hc_degree), 
+                                                      diverging = F)
+image_write(brain_plot_fep_gt_hc_inflated, path = "vector_files/NBS05_degree_plot_fep_gt_hc_noSip.svg", format = "svg")
+
+
+##normalise by the number of potential connection a region could have
+#included_edges <- readRDS("~/Dropbox/Sid/R_files/STAGES_difussion/data/ziGamma_nbs/included_edges_zi20_ks_d_o.RDS") 
+#included_edges <- vec_2_mat(included_edges, 319, 0,lower.tri = T)
+#included_edges[is.na(included_edges)] <- 0
+#included_edges_degree <- rowSums(included_edges)
+#fep_lt_hc_degree_norm <- fep_lt_hc_degree/included_edges_degree 
+#fep_gt_hc_degree_norm  <- fep_gt_hc_degree/included_edges_degree 
+#
+#
+#removed_roi <- c(50,51,52, 53, 86, 90, 197,199, 200, 201, 242, 243, 244)
+#plot_vector  <- R.utils::insert(c(fep_gt_hc_degree_norm), removed_roi, 0)
+#plot_on_brain_pysurf(plot_vector = plot_vector, 
+#                     surf = "inflated", 
+#                     colourscale = "Reds", 
+#                     min = min(fep_lt_hc_degree_norm, fep_gt_hc_degree_norm), 
+#                     max = max(fep_lt_hc_degree_norm, fep_gt_hc_degree_norm), 
+#                     diverging = F)
+#
+#View(cbind(fep_gt_hc_degree_norm, labs))
+```
